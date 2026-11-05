@@ -1,0 +1,78 @@
+# Sketch of the stateless tiers on Kubernetes (architecture §11).
+# Illustrative, not a turnkey deploy: the stateful stores (ClickHouse, Kafka,
+# Postgres, Redis, S3) run as managed services / operators, referenced by env.
+#
+# The point: each tier is its own Deployment with its own HPA, so ingest, query,
+# eval, and monitor workloads scale independently on their own signals.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: respan-ingest }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: respan-ingest } }
+  template:
+    metadata: { labels: { app: respan-ingest } }
+    spec:
+      containers:
+        - name: ingest
+          image: ghcr.io/you/respan:latest
+          command: ["bun", "server/index.ts"]
+          ports: [{ containerPort: 4318 }]
+          env:
+            - { name: CLICKHOUSE_URL, valueFrom: { secretKeyRef: { name: respan, key: clickhouse } } }
+            - { name: KAFKA_BROKERS, valueFrom: { secretKeyRef: { name: respan, key: kafka } } }
+          readinessProbe: { httpGet: { path: /health, port: 4318 } }
+          resources: { requests: { cpu: 250m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: respan-ingest }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: respan-ingest }
+  minReplicas: 3
+  maxReplicas: 50            # soak a 10x spike, then scale back down
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: respan-eval-worker }
+spec:
+  replicas: 2                # scales on queue backlog (KEDA/custom metric in prod)
+  selector: { matchLabels: { app: respan-eval-worker } }
+  template:
+    metadata: { labels: { app: respan-eval-worker } }
+    spec:
+      containers:
+        - name: eval-worker
+          image: ghcr.io/you/respan:latest
+          command: ["bun", "server/evalworker.ts"]
+          env:
+            - { name: OPENAI_API_KEY, valueFrom: { secretKeyRef: { name: respan, key: openai } } }
+          resources: { requests: { cpu: 250m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: respan-monitor-worker }
+spec:
+  replicas: 1                # a single consumer-group member is enough
+  selector: { matchLabels: { app: respan-monitor-worker } }
+  template:
+    metadata: { labels: { app: respan-monitor-worker } }
+    spec:
+      containers:
+        - name: monitor-worker
+          image: ghcr.io/you/respan:latest
+          command: ["bun", "server/monitorworker.ts"]
+          env:
+            - { name: RESPAN_ALERT_WEBHOOK, valueFrom: { secretKeyRef: { name: respan, key: webhook } } }
+          resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: respan-ingest }
+spec:
+  selector: { app: respan-ingest }
+  ports: [{ port: 80, targetPort: 4318 }]

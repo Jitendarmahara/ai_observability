@@ -1,0 +1,11 @@
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+.data/
+.DS_Store
+dist/
+
+# personal drafts, not part of the project
+docs/job-application.md
+docs/x-thread.md

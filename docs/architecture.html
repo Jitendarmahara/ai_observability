@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Respan — Production Architecture of an LLM Observability Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#0f1620; --panel:#121b26; --panel2:#17212e;
+    --line:#223040; --line2:#2d3f52;
+    --fg:#e6edf3; --muted:#9bb0c3; --dim:#6b8299;
+    --accent:#2dd4bf; --accent2:#38bdf8; --amber:#f5b945; --violet:#a78bfa; --rose:#fb7185;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+    --sans:"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:radial-gradient(1200px 700px at 70% -10%,#13263a 0%,var(--bg) 55%);
+    color:var(--fg);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased;
+    font-size:16px;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+  header.hero{padding:64px 0 34px;border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  h1{font-size:clamp(28px,5vw,46px);line-height:1.1;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}
+  h1 .g{background:linear-gradient(100deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{font-size:clamp(16px,2.2vw,19px);color:var(--muted);max-width:760px;margin:0}
+  .pillrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .pill{font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  nav.toc{position:sticky;top:0;z-index:20;background:rgba(10,14,20,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);margin-top:0}
+  nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding:10px 22px;scrollbar-width:none}
+  nav.toc .wrap::-webkit-scrollbar{display:none}
+  nav.toc a{white-space:nowrap;font-size:13px;color:var(--dim);text-decoration:none;padding:6px 11px;border-radius:7px;font-weight:500}
+  nav.toc a:hover{color:var(--fg);background:var(--panel)}
+  section{padding:52px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:clamp(22px,3.4vw,30px);margin:0 0 6px;font-weight:750;letter-spacing:-.01em}
+  h2 .n{font-family:var(--mono);color:var(--accent);font-size:.62em;margin-right:12px;font-weight:600}
+  .sub{color:var(--dim);font-size:14px;margin:0 0 26px;font-family:var(--mono)}
+  h3{font-size:19px;margin:34px 0 10px;font-weight:650}
+  p{margin:0 0 16px;color:#cddae6}
+  strong{color:#fff;font-weight:650}
+  a.link{color:var(--accent2);text-decoration:none;border-bottom:1px solid #2a4a63}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1.5px 6px;color:#bfe9e0}
+  .callout{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:18px 20px;margin:22px 0}
+  .callout.amber{border-left-color:var(--amber)}
+  .callout.violet{border-left-color:var(--violet)}
+  .callout .t{font-weight:700;color:#fff;margin:0 0 6px;font-size:14.5px;display:flex;align-items:center;gap:8px}
+  .callout p{margin:0;color:var(--muted);font-size:14.5px}
+  figure{margin:30px 0;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 22px 14px;overflow:hidden}
+  figure svg{display:block;width:100%;height:auto;max-width:100%}
+  figcaption{color:var(--dim);font-size:13px;margin-top:14px;text-align:center;font-family:var(--mono)}
+  .grid{display:grid;gap:14px}
+  @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 18px}
+  .card h4{margin:0 0 4px;font-size:16px;font-weight:680;display:flex;align-items:center;gap:9px}
+  .card .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--bg);background:var(--accent);border-radius:4px;padding:2px 7px;font-weight:700}
+  .card p{font-size:14px;margin:0 0 10px;color:var(--muted)}
+  .hww{list-style:none;padding:0;margin:0;display:grid;gap:7px}
+  .hww li{font-size:13.5px;color:#c3d3e0;padding-left:0}
+  .hww li b{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;display:inline-block;width:62px;color:var(--accent)}
+  .hww li.why b{color:var(--accent2)}
+  .hww li.solves b{color:var(--amber)}
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+  td{color:#cbd9e5;vertical-align:top}
+  td code{white-space:nowrap}
+  .lifeflow{counter-reset:step;list-style:none;padding:0;margin:20px 0}
+  .lifeflow li{position:relative;padding:12px 0 12px 46px;border-bottom:1px solid var(--line);font-size:14.5px;color:#cbd9e5}
+  .lifeflow li:before{counter-increment:step;content:counter(step);position:absolute;left:0;top:11px;width:30px;height:30px;border-radius:50%;background:var(--panel2);border:1px solid var(--line2);color:var(--accent);font-family:var(--mono);font-weight:700;font-size:13px;display:grid;place-items:center}
+  footer{padding:40px 0 70px;color:var(--dim);font-size:13px;text-align:center}
+  footer a{color:var(--accent2);text-decoration:none}
+  .mini{font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">LLM Observability · Production System Design</p>
+    <h1>How <span class="g">Respan</span> works — and how to build it<br/>for a real company at scale</h1>
+    <p class="lede">Respan (formerly Keywords AI) is the <strong>Datadog + Sentry + QA-lab for AI applications</strong>. This is the full mental model and a production-grade architecture: every component, why it exists, and what breaks without it — built to swallow billions of spans a day on Kubernetes, ClickHouse, and a streaming backbone.</p>
+    <div class="pillrow">
+      <span class="pill">Kubernetes</span><span class="pill">ClickHouse</span><span class="pill">Kafka / queue</span>
+      <span class="pill">Object storage</span><span class="pill">Postgres</span><span class="pill">Redis</span>
+      <span class="pill">Stream consumers</span><span class="pill">Eval workers</span><span class="pill">OTLP ingest</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#problem">Problem</a>
+  <a href="#concept">Core concept</a>
+  <a href="#halves">Two halves</a>
+  <a href="#scale">The scale wall</a>
+  <a href="#write">Write path</a>
+  <a href="#components">Components</a>
+  <a href="#read">Read path</a>
+  <a href="#evals">Evaluation</a>
+  <a href="#alerts">Monitors</a>
+  <a href="#gateway">Gateway</a>
+  <a href="#k8s">Kubernetes</a>
+  <a href="#lifecycle">Lifecycle</a>
+  <a href="#stack">Stack</a>
+</div></nav>
+
+<main class="wrap">
+
+<!-- PROBLEM -->
+<section id="problem">
+  <h2><span class="n">01</span>What problem does it solve?</h2>
+  <p class="sub">Why normal logging / APM tools aren't enough for AI apps</p>
+  <p>A normal web app has Sentry for errors and Datadog for metrics to answer "is it working?". LLM apps have problems those tools were never built for:</p>
+  <div class="grid two">
+    <div class="card"><h4>🎲 Non-deterministic</h4><p>The same input gives different output every time. "Works on my machine" is meaningless — you must observe real production behavior, not reproduce it.</p></div>
+    <div class="card"><h4>💸 Costs money per call</h4><p>Every request burns tokens = real dollars. You need per-call, per-model, per-customer cost accounting, continuously.</p></div>
+    <div class="card"><h4>🐢 Slow &amp; spiky</h4><p>LLM calls take 1–10s. Latency tails (p95/p99) are what users feel. You need percentile latency over time, not averages.</p></div>
+    <div class="card"><h4>🤔 Quality is fuzzy</h4><p>There is no "200 OK". An answer can succeed technically yet be wrong, rude, or hallucinated. Quality must be <em>measured</em>, not assumed.</p></div>
+    <div class="card"><h4>🪆 Multi-step agents</h4><p>One user question fans out into 5–20 LLM + tool calls. When it breaks, you need to know <em>which step</em> — and see its exact input/output.</p></div>
+    <div class="card"><h4>📈 Volume is brutal</h4><p>A busy AI product emits <em>billions</em> of these events. The storage and query problem alone is a serious distributed-systems challenge.</p></div>
+  </div>
+  <div class="callout">
+    <p class="t">The one-liner to hold in your head</p>
+    <p>Respan <strong>captures every step your AI takes as a nested <em>trace</em></strong>, stores it at massive scale, then (a) shows it to you as live dashboards + searchable logs, and (b) lets you <strong>score</strong> those traces for quality with code checks, LLM judges, and behavior models.</p>
+  </div>
+</section>
+
+<!-- CORE CONCEPT -->
+<section id="concept">
+  <h2><span class="n">02</span>The core concept: Traces &amp; Spans</h2>
+  <p class="sub">Understand this one data structure and the entire system clicks</p>
+  <p>A <strong>trace</strong> is the full story of handling <em>one user request</em>. A <strong>span</strong> is <em>one step</em> inside that trace. Spans nest into a tree and are <em>typed</em> — <code>llm</code>, <code>tool</code>, <code>retrieval</code>, <code>agent</code>. Every <code>llm</code> span records model, input, output, tokens, latency, cost, and status.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 430" role="img" aria-label="A trace for a booking request, broken into four nested spans: classify intent (LLM), check availability (tool), fetch policy (retrieval), and generate reply (LLM), each showing latency and cost.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#2dd4bf"/>
+        </marker>
+      </defs>
+      <!-- trace bar -->
+      <rect x="20" y="20" width="860" height="46" rx="9" fill="#17212e" stroke="#2d3f52"/>
+      <text x="38" y="42" font-family="JetBrains Mono" font-size="14" fill="#e6edf3" font-weight="600">TRACE · "booking request"</text>
+      <text x="38" y="59" font-family="JetBrains Mono" font-size="11.5" fill="#9bb0c3">total 4.2s · $0.0030 · 1,850 tokens · status ok</text>
+      <!-- spine -->
+      <line x1="60" y1="66" x2="60" y2="400" stroke="#2d3f52" stroke-width="1.5"/>
+      <!-- span rows -->
+      <!-- row 1 -->
+      <line x1="60" y1="110" x2="96" y2="110" stroke="#2d3f52" stroke-width="1.5"/>
+      <rect x="96" y="90" width="784" height="42" rx="8" fill="#121b26" stroke="#2dd4bf"/>
+      <rect x="104" y="100" width="54" height="22" rx="5" fill="#0f2b29" stroke="#2dd4bf"/>
+      <text x="131" y="115" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#2dd4bf" font-weight="600">llm</text>
+      <text x="170" y="108" font-family="Inter" font-size="13.5" fill="#e6edf3" font-weight="600">classify intent</text>
+      <text x="170" y="124" font-family="JetBrains Mono" font-size="10.5" fill="#9bb0c3">gpt-4o-mini · in:"Book me a dentist…" · out:{intent:booking}</text>
+      <text x="868" y="108" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#9bb0c3">1.1s</text>
+      <text x="868" y="123" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#f5b945">$0.0004</text>
+      <!-- row 2 -->
+      <line x1="60" y1="167" x2="96" y2="167" stroke="#2d3f52" stroke-width="1.5"/>
+      <rect x="96" y="147" width="784" height="42" rx="8" fill="#121b26" stroke="#38bdf8"/>
+      <rect x="104" y="157" width="54" height="22" rx="5" fill="#0c2436" stroke="#38bdf8"/>
+      <text x="131" y="172" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#38bdf8" font-weight="600">tool</text>
+      <text x="170" y="165" font-family="Inter" font-size="13.5" fill="#e6edf3" font-weight="600">check_availability</text>
+      <text x="170" y="181" font-family="JetBrains Mono" font-size="10.5" fill="#9bb0c3">in:{date:2026-11-10} · out:[10:00, 14:30] · no LLM</text>
+      <text x="868" y="172" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#9bb0c3">0.3s</text>
+      <!-- row 3 -->
+      <line x1="60" y1="224" x2="96" y2="224" stroke="#2d3f52" stroke-width="1.5"/>
+      <rect x="96" y="204" width="784" height="42" rx="8" fill="#121b26" stroke="#a78bfa"/>
+      <rect x="104" y="214" width="78" height="22" rx="5" fill="#1d1733" stroke="#a78bfa"/>
+      <text x="143" y="229" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#a78bfa" font-weight="600">retrieval</text>
+      <text x="194" y="222" font-family="Inter" font-size="13.5" fill="#e6edf3" font-weight="600">fetch clinic policy</text>
+      <text x="194" y="238" font-family="JetBrains Mono" font-size="10.5" fill="#9bb0c3">out:"Cancellations require 24h notice…"</text>
+      <text x="868" y="229" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#9bb0c3">0.2s</text>
+      <!-- row 4 -->
+      <line x1="60" y1="281" x2="96" y2="281" stroke="#2d3f52" stroke-width="1.5"/>
+      <rect x="96" y="261" width="784" height="42" rx="8" fill="#121b26" stroke="#2dd4bf"/>
+      <rect x="104" y="271" width="54" height="22" rx="5" fill="#0f2b29" stroke="#2dd4bf"/>
+      <text x="131" y="286" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#2dd4bf" font-weight="600">llm</text>
+      <text x="170" y="279" font-family="Inter" font-size="13.5" fill="#e6edf3" font-weight="600">generate reply</text>
+      <text x="170" y="295" font-family="JetBrains Mono" font-size="10.5" fill="#9bb0c3">gpt-4o · out:"I found two slots Tuesday: 10am or 2:30pm…"</text>
+      <text x="868" y="279" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#9bb0c3">2.6s</text>
+      <text x="868" y="294" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="#f5b945">$0.0026</text>
+      <!-- annotation -->
+      <text x="60" y="340" font-family="Inter" font-size="13" fill="#9bb0c3">The nesting is the whole point: you instantly see </text>
+      <text x="60" y="360" font-family="Inter" font-size="13" fill="#e6edf3" font-weight="600">"generate reply" is the slow, expensive step</text>
+      <text x="415" y="360" font-family="Inter" font-size="13" fill="#9bb0c3"> — and its exact input &amp; output are one click away.</text>
+      <text x="60" y="392" font-family="JetBrains Mono" font-size="11.5" fill="#6b8299">Every box below is stored as one row in the spans table. Billions of them.</text>
+    </svg>
+    <figcaption>Fig. 1 — One trace = one request, decomposed into typed, nested spans.</figcaption>
+  </figure>
+  <div class="callout">
+    <p class="t">⚑ This is the keystone</p>
+    <p>The database schema, the SDK, the ingestion pipeline, and every screen in the UI exist to <strong>capture, store, and display these traces</strong>. Get the trace model right and everything else is aggregation or judgment layered on top.</p>
+  </div>
+</section>
+
+<!-- TWO HALVES -->
+<section id="halves">
+  <h2><span class="n">03</span>The two halves of the product</h2>
+  <p class="sub">Observability watches production · Evaluation measures quality</p>
+  <figure>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Traces feed two halves: Observability (dashboards, logs, monitors) answering what is happening, and Evaluation (datasets, evaluators, scores) answering whether it is good.">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9bb0c3"/></marker>
+      </defs>
+      <rect x="350" y="20" width="200" height="56" rx="10" fill="#17212e" stroke="#2dd4bf"/>
+      <text x="450" y="44" text-anchor="middle" font-family="Inter" font-size="15" fill="#e6edf3" font-weight="700">Traces &amp; Spans</text>
+      <text x="450" y="63" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#2dd4bf">the shared source of truth</text>
+      <line x1="420" y1="76" x2="230" y2="118" stroke="#9bb0c3" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <line x1="480" y1="76" x2="672" y2="118" stroke="#9bb0c3" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <!-- left: observability -->
+      <rect x="40" y="120" width="360" height="150" rx="12" fill="#101c22" stroke="#2dd4bf"/>
+      <text x="60" y="148" font-family="Inter" font-size="16" fill="#2dd4bf" font-weight="750">Observability</text>
+      <text x="60" y="169" font-family="Inter" font-size="12.5" fill="#9bb0c3">"What is my AI doing right now?"</text>
+      <text x="60" y="200" font-family="JetBrains Mono" font-size="12" fill="#cbd9e5">▸ Dashboards — cost, latency p95, errors</text>
+      <text x="60" y="222" font-family="JetBrains Mono" font-size="12" fill="#cbd9e5">▸ Logs explorer — search &amp; filter traces</text>
+      <text x="60" y="244" font-family="JetBrains Mono" font-size="12" fill="#cbd9e5">▸ Monitors — alert on drift</text>
+      <text x="60" y="263" font-family="Inter" font-size="11.5" fill="#6b8299">Input: live traffic · Output: charts &amp; alerts</text>
+      <!-- right: evaluation -->
+      <rect x="500" y="120" width="360" height="150" rx="12" fill="#1d1733" stroke="#a78bfa"/>
+      <text x="520" y="148" font-family="Inter" font-size="16" fill="#a78bfa" font-weight="750">Evaluation</text>
+      <text x="520" y="169" font-family="Inter" font-size="12.5" fill="#9bb0c3">"Is my AI any good?"</text>
+      <text x="520" y="200" font-family="JetBrains Mono" font-size="12" fill="#cbd9e5">▸ Datasets — built from real traces</text>
+      <text x="520" y="222" font-family="JetBrains Mono" font-size="12" fill="#cbd9e5">▸ Evaluators — code / LLM-judge / behavior</text>
+      <text x="520" y="244" font-family="JetBrains Mono" font-size="12" fill="#cbd9e5">▸ Scores — link back to the trace</text>
+      <text x="520" y="263" font-family="Inter" font-size="11.5" fill="#6b8299">Input: datasets &amp; samples · Output: grades</text>
+    </svg>
+    <figcaption>Fig. 2 — Both halves read the same trace data; they ask different questions of it.</figcaption>
+  </figure>
+</section>
+
+<!-- SCALE WALL -->
+<section id="scale">
+  <h2><span class="n">04</span>The wall every design hits: scale</h2>
+  <p class="sub">Why a single Postgres (or <code>bun:sqlite</code>) collapses — and what the architecture is really solving</p>
+  <p>A demo can store spans in SQLite. A real company cannot. Here is the shape of the problem that forces every decision downstream:</p>
+  <div class="grid three">
+    <div class="card"><h4>Write amplification</h4><p>One agent request = 5–20 spans. 10k requests/sec = <strong>100k+ row inserts/sec</strong>, bursty and spiky. A row-store with indexes can't keep up.</p></div>
+    <div class="card"><h4>Analytical reads</h4><p>Dashboards ask "p95 latency per model per hour over 30 days" across <strong>billions of rows</strong>. That's a columnar-scan problem, not a point-lookup problem.</p></div>
+    <div class="card"><h4>Fat payloads</h4><p>A single prompt can be 100KB+ of context. Shoving blobs into your metrics store bloats it and wrecks compression.</p></div>
+  </div>
+  <div class="callout amber">
+    <p class="t">⚑ The design principle behind everything below</p>
+    <p><strong>Decouple, and use the right store for each shape of data.</strong> Fast dumb intake → durable buffer → batch writes into a columnar analytics DB; keep relational metadata in Postgres; keep big blobs in object storage; cache hot reads in Redis; run slow eval work on separate scalable workers. Kubernetes keeps all these stateless tiers alive and auto-scaled.</p>
+  </div>
+</section>
+
+<!-- WRITE PATH -->
+<section id="write">
+  <h2><span class="n">05</span>Production architecture — the write path</h2>
+  <p class="sub">How a span travels from the customer's app into durable storage, without ever slowing their app down</p>
+
+  <figure>
+    <svg viewBox="0 0 920 620" role="img" aria-label="End-to-end ingestion pipeline: SDK batches spans over OTLP to a load balancer, into stateless ingest/collector pods that authenticate, enrich cost, and offload large payloads to object storage, then produce to a Kafka buffer; stream consumers batch-insert into ClickHouse while metadata goes to Postgres and Redis caches hot data. All server tiers run inside a Kubernetes cluster.">
+      <defs>
+        <marker id="aw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2dd4bf"/></marker>
+        <marker id="aw2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9bb0c3"/></marker>
+      </defs>
+
+      <!-- customer app -->
+      <rect x="40" y="30" width="250" height="78" rx="11" fill="#17212e" stroke="#2d3f52"/>
+      <text x="60" y="58" font-family="Inter" font-size="14.5" fill="#e6edf3" font-weight="700">Customer's AI app</text>
+      <text x="60" y="78" font-family="JetBrains Mono" font-size="11" fill="#9bb0c3">respan.wrapOpenAI(openai)</text>
+      <text x="60" y="95" font-family="JetBrains Mono" font-size="11" fill="#6b8299">spans captured + batched in-process</text>
+
+      <!-- arrow to LB -->
+      <path d="M290 69 L368 69" stroke="#2dd4bf" stroke-width="2" marker-end="url(#aw)"/>
+      <text x="300" y="60" font-family="JetBrains Mono" font-size="10.5" fill="#2dd4bf">async · OTLP/HTTP</text>
+
+      <!-- K8s cluster boundary -->
+      <rect x="372" y="18" width="524" height="584" rx="16" fill="none" stroke="#2d3f52" stroke-dasharray="6 5"/>
+      <text x="388" y="40" font-family="JetBrains Mono" font-size="11.5" fill="#6b8299">KUBERNETES CLUSTER — stateless tiers autoscale (HPA), self-heal, multi-AZ</text>
+
+      <!-- Ingress / LB -->
+      <rect x="388" y="52" width="150" height="58" rx="10" fill="#101c22" stroke="#38bdf8"/>
+      <text x="463" y="76" text-anchor="middle" font-family="Inter" font-size="13" fill="#38bdf8" font-weight="700">Ingress / LB</text>
+      <text x="463" y="94" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">TLS · routing · rate-limit</text>
+
+      <!-- Ingest pods -->
+      <rect x="388" y="138" width="230" height="78" rx="10" fill="#101c22" stroke="#2dd4bf"/>
+      <text x="503" y="162" text-anchor="middle" font-family="Inter" font-size="13" fill="#2dd4bf" font-weight="700">Ingest / Collector pods ×N</text>
+      <text x="503" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">authn (API key) · validate</text>
+      <text x="503" y="195" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">enrich cost from token usage</text>
+      <text x="503" y="210" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b8299">stateless · just transforms &amp; forwards</text>
+      <path d="M463 110 L463 136" stroke="#2dd4bf" stroke-width="2" marker-end="url(#aw)"/>
+
+      <!-- object storage (large payloads) -->
+      <rect x="648" y="138" width="210" height="58" rx="10" fill="#17212e" stroke="#a78bfa"/>
+      <text x="753" y="162" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#a78bfa" font-weight="700">Object storage (S3)</text>
+      <text x="753" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">big prompts/outputs → blob + ref</text>
+      <path d="M618 170 L644 170" stroke="#9bb0c3" stroke-width="1.6" marker-end="url(#aw2)"/>
+
+      <!-- Kafka buffer -->
+      <rect x="388" y="248" width="470" height="62" rx="10" fill="#1b1406" stroke="#f5b945"/>
+      <text x="623" y="273" text-anchor="middle" font-family="Inter" font-size="13" fill="#f5b945" font-weight="700">Durable buffer — Kafka (partitioned topics)</text>
+      <text x="623" y="291" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="#9bb0c3">absorbs spikes · decouples intake from storage · replayable · fan-out</text>
+      <path d="M503 216 L503 246" stroke="#2dd4bf" stroke-width="2" marker-end="url(#aw)"/>
+      <text x="512" y="236" font-family="JetBrains Mono" font-size="10" fill="#6b8299">produce</text>
+
+      <!-- consumers -->
+      <rect x="388" y="342" width="210" height="72" rx="10" fill="#101c22" stroke="#2dd4bf"/>
+      <text x="493" y="366" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#2dd4bf" font-weight="700">Storage consumers ×N</text>
+      <text x="493" y="383" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">batch 10k spans → 1 insert</text>
+      <text x="493" y="399" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b8299">backpressure-aware</text>
+      <path d="M470 310 L470 340" stroke="#f5b945" stroke-width="2" marker-end="url(#aw)"/>
+      <text x="478" y="330" font-family="JetBrains Mono" font-size="10" fill="#6b8299">consume</text>
+
+      <!-- fan out note -->
+      <rect x="628" y="342" width="230" height="72" rx="10" fill="#101c22" stroke="#38bdf8"/>
+      <text x="743" y="366" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#38bdf8" font-weight="700">Other consumers</text>
+      <text x="743" y="383" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">eval sampler · alert engine</text>
+      <text x="743" y="399" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b8299">same stream, different jobs</text>
+      <path d="M623 310 L700 340" stroke="#f5b945" stroke-width="1.6" marker-end="url(#aw)"/>
+
+      <!-- ClickHouse -->
+      <rect x="388" y="452" width="210" height="76" rx="10" fill="#0f2b29" stroke="#2dd4bf"/>
+      <text x="493" y="478" text-anchor="middle" font-family="Inter" font-size="13.5" fill="#2dd4bf" font-weight="750">ClickHouse</text>
+      <text x="493" y="496" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">columnar · spans + metrics</text>
+      <text x="493" y="512" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">billions of rows · fast aggregates</text>
+      <path d="M493 414 L493 450" stroke="#2dd4bf" stroke-width="2" marker-end="url(#aw)"/>
+
+      <!-- Postgres -->
+      <rect x="628" y="452" width="110" height="76" rx="10" fill="#17212e" stroke="#38bdf8"/>
+      <text x="683" y="482" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#38bdf8" font-weight="700">Postgres</text>
+      <text x="683" y="500" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">users, keys,</text>
+      <text x="683" y="513" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">prompts, evals</text>
+
+      <!-- Redis -->
+      <rect x="748" y="452" width="110" height="76" rx="10" fill="#241012" stroke="#fb7185"/>
+      <text x="803" y="482" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#fb7185" font-weight="700">Redis</text>
+      <text x="803" y="500" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">cache · rate</text>
+      <text x="803" y="513" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">limit · dedup</text>
+
+      <text x="388" y="560" font-family="Inter" font-size="12" fill="#9bb0c3">Golden rule: the SDK path is </text>
+      <text x="610" y="560" font-family="Inter" font-size="12" fill="#2dd4bf" font-weight="700">fire-and-forget</text>
+      <text x="693" y="560" font-family="Inter" font-size="12" fill="#9bb0c3"> — if Respan is down,</text>
+      <text x="388" y="580" font-family="Inter" font-size="12" fill="#9bb0c3">the customer's app keeps serving users. Observability must never be a dependency.</text>
+    </svg>
+    <figcaption>Fig. 3 — The write path. Fast stateless intake → durable buffer → batched columnar writes. Each hop exists to protect the one after it.</figcaption>
+  </figure>
+</section>
+
+<!-- COMPONENTS -->
+<section id="components">
+  <h2><span class="n">06</span>Every component — how, why, what it solves</h2>
+  <p class="sub">The "why does this box exist" tour. Remove any one and something specific breaks.</p>
+
+  <div class="grid two">
+    <div class="card">
+      <h4><span class="tag">SDK</span>Client SDK + <code>wrapOpenAI</code></h4>
+      <p>A thin library the customer installs. It wraps their model client and auto-captures every call as a span, batching them in memory and shipping asynchronously.</p>
+      <ul class="hww">
+        <li><b>How</b> Proxies <code>chat.completions.create</code>; builds spans; flushes batches over OTLP/HTTP on a background timer.</li>
+        <li class="why"><b>Why</b> One-line integration beats asking customers to rewrite code. Async + batched = near-zero overhead.</li>
+        <li class="solves"><b>Solves</b> Capturing data without adding latency to — or risking the uptime of — the customer's product.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Edge</span>Ingress / Load Balancer</h4>
+      <p>The cluster's front door. Terminates TLS, routes paths, applies coarse rate-limiting, spreads traffic across ingest pods.</p>
+      <ul class="hww">
+        <li><b>How</b> K8s Ingress controller (e.g. NGINX/Envoy) in front of the ingest Service.</li>
+        <li class="why"><b>Why</b> You never expose pods directly; you need one stable, secured entrypoint that scales horizontally.</li>
+        <li class="solves"><b>Solves</b> Even traffic distribution, TLS, and a choke point for abuse before it reaches your logic.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Ingest</span>Collector / Ingest service</h4>
+      <p>Stateless pods that authenticate the API key, validate the payload, compute cost from token usage + a pricing table, offload fat payloads to object storage, then produce to Kafka.</p>
+      <ul class="hww">
+        <li><b>How</b> Horizontally-scaled deployment; does cheap CPU work only, holds no state.</li>
+        <li class="why"><b>Why</b> Intake must be <em>fast and dumb</em> so it can soak spikes; anything slow (DB writes) is pushed past the buffer.</li>
+        <li class="solves"><b>Solves</b> Turning raw, untrusted, variable-size input into clean, enriched, uniform events.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Buffer</span>Message queue — Kafka</h4>
+      <p>A durable, partitioned log sitting between intake and storage. Producers write; multiple consumer groups read independently.</p>
+      <ul class="hww">
+        <li><b>How</b> Topics partitioned by project/tenant; consumers commit offsets; data retained for replay.</li>
+        <li class="why"><b>Why</b> Decouples a bursty, spiky producer from a throughput-limited database; survives downstream outages.</li>
+        <li class="solves"><b>Solves</b> Spike absorption, zero data loss when ClickHouse is slow/down, replay after bugs, and fan-out to eval + alerting.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Store</span>ClickHouse — analytics DB</h4>
+      <p>Columnar, append-optimized database holding spans and pre-aggregated metrics. The engine behind every dashboard and log search.</p>
+      <ul class="hww">
+        <li><b>How</b> Consumers batch-insert tens of thousands of rows at once; materialized views pre-roll metrics by minute/hour.</li>
+        <li class="why"><b>Why</b> Columnar storage scans and aggregates billions of rows in milliseconds and compresses them 10×+ — a row store (Postgres) can't.</li>
+        <li class="solves"><b>Solves</b> "p95 latency per model per hour over 30 days" over enormous volume, cheaply.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Store</span>Object storage — S3</h4>
+      <p>Cheap, infinite blob store for oversized prompts and outputs; ClickHouse keeps just a reference.</p>
+      <ul class="hww">
+        <li><b>How</b> Ingest writes the blob, stores its key in the span row; UI fetches on demand.</li>
+        <li class="why"><b>Why</b> Long-context payloads would bloat the analytics DB and destroy its compression and scan speed.</li>
+        <li class="solves"><b>Solves</b> Keeping the hot metrics store lean while still preserving full fidelity of every input/output.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Store</span>Postgres — metadata</h4>
+      <p>Relational, transactional store for everything that is <em>small, mutable, and relational</em>: users, projects, API keys, prompt versions, evaluator + dataset definitions.</p>
+      <ul class="hww">
+        <li><b>How</b> Standard managed Postgres; the serving tier reads/writes it for config and auth.</li>
+        <li class="why"><b>Why</b> This data needs ACID transactions, updates, and joins — the opposite of append-only span data.</li>
+        <li class="solves"><b>Solves</b> Polyglot persistence: the right tool per data shape, instead of forcing one DB to do both jobs badly.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Cache</span>Redis</h4>
+      <p>In-memory store for hot dashboard query results, per-key rate-limit counters, and span-ID dedup.</p>
+      <ul class="hww">
+        <li><b>How</b> Serving tier checks Redis before hitting ClickHouse; ingest uses it for counters/idempotency.</li>
+        <li class="why"><b>Why</b> The same dashboards are loaded constantly; recomputing identical aggregates wastes ClickHouse capacity.</li>
+        <li class="solves"><b>Solves</b> Sub-100ms repeat reads, abuse throttling, and exactly-once-ish handling of retried batches.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Compute</span>Eval workers</h4>
+      <p>A separate pool of workers that pull eval jobs from the queue, run code checks / call an LLM judge / score behaviors, and write results back.</p>
+      <ul class="hww">
+        <li><b>How</b> Own deployment + queue; scales on job backlog, independent of ingest/serving.</li>
+        <li class="why"><b>Why</b> Evals are slow (LLM calls = seconds) and bursty; mixing them with intake would starve it.</li>
+        <li class="solves"><b>Solves</b> Running expensive quality scoring at scale without ever slowing live ingestion or dashboards.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4><span class="tag">Serve</span>Query API + Web app</h4>
+      <p>Stateless pods that serve the dashboard UI and answer its queries from ClickHouse (metrics) + Postgres (config) + Redis (cache).</p>
+      <ul class="hww">
+        <li><b>How</b> Read-path services behind the same ingress; fan queries to the right store.</li>
+        <li class="why"><b>Why</b> Separating read serving from write ingestion lets each scale to its own, very different load.</li>
+        <li class="solves"><b>Solves</b> Fast, independently-scalable dashboards and log search for users.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- READ PATH -->
+<section id="read">
+  <h2><span class="n">07</span>The read / serving path</h2>
+  <p class="sub">What happens when an engineer opens a dashboard or searches logs</p>
+  <figure>
+    <svg viewBox="0 0 900 250" role="img" aria-label="A browser request hits the query API, which checks Redis cache first, then queries ClickHouse for span metrics and Postgres for config, fetching large payloads from S3 only when a trace is opened.">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#38bdf8"/></marker></defs>
+      <rect x="30" y="100" width="130" height="54" rx="10" fill="#17212e" stroke="#2d3f52"/>
+      <text x="95" y="124" text-anchor="middle" font-family="Inter" font-size="13" fill="#e6edf3" font-weight="700">Browser</text>
+      <text x="95" y="142" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">dashboard / logs</text>
+
+      <rect x="220" y="100" width="150" height="54" rx="10" fill="#101c22" stroke="#38bdf8"/>
+      <text x="295" y="124" text-anchor="middle" font-family="Inter" font-size="13" fill="#38bdf8" font-weight="700">Query API</text>
+      <text x="295" y="142" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">stateless pods</text>
+      <path d="M160 127 L216 127" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr)"/>
+
+      <!-- redis first -->
+      <rect x="430" y="20" width="150" height="48" rx="10" fill="#241012" stroke="#fb7185"/>
+      <text x="505" y="42" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#fb7185" font-weight="700">Redis cache</text>
+      <text x="505" y="59" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">hit? return instantly</text>
+      <path d="M360 110 L432 66" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arr)"/>
+      <text x="366" y="86" font-family="JetBrains Mono" font-size="9.5" fill="#6b8299">1. check</text>
+
+      <rect x="430" y="104" width="150" height="48" rx="10" fill="#0f2b29" stroke="#2dd4bf"/>
+      <text x="505" y="126" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#2dd4bf" font-weight="700">ClickHouse</text>
+      <text x="505" y="143" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">aggregate spans</text>
+      <path d="M370 127 L426 127" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arr)"/>
+      <text x="376" y="119" font-family="JetBrains Mono" font-size="9.5" fill="#6b8299">2. miss → query</text>
+
+      <rect x="430" y="188" width="150" height="48" rx="10" fill="#17212e" stroke="#38bdf8"/>
+      <text x="505" y="210" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#38bdf8" font-weight="700">Postgres</text>
+      <text x="505" y="227" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">project / auth config</text>
+      <path d="M360 144 L432 196" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arr)"/>
+
+      <rect x="650" y="104" width="150" height="48" rx="10" fill="#1d1733" stroke="#a78bfa"/>
+      <text x="725" y="126" text-anchor="middle" font-family="Inter" font-size="12.5" fill="#a78bfa" font-weight="700">S3 blobs</text>
+      <text x="725" y="143" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#9bb0c3">only on trace open</text>
+      <path d="M580 128 L646 128" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#arr)"/>
+      <text x="586" y="120" font-family="JetBrains Mono" font-size="9.5" fill="#6b8299">3. lazy</text>
+    </svg>
+    <figcaption>Fig. 4 — Read path: cache first, columnar aggregate second, full payloads fetched lazily only when a trace is expanded.</figcaption>
+  </figure>
+</section>
+
+<!-- EVALS -->
+<section id="evals">
+  <h2><span class="n">08</span>The evaluation subsystem</h2>
+  <p class="sub">"Unit tests for your AI" — the loop that lets a team ship prompt changes with confidence</p>
+  <p>Observability tells you <em>what happened</em>; evaluation tells you <em>whether it was good</em>. The workflow: build a dataset (often sampled from real production traces), define an evaluator, run it, and every score links back to the exact span it judged.</p>
+  <figure>
+    <svg viewBox="0 0 900 330" role="img" aria-label="Evaluation loop: production traces are sampled into a dataset; an evaluator (code check, LLM judge, or behavior model) run by eval workers scores each item; scores are stored linked to their span and surfaced as a pass rate, closing the loop back to prompt changes.">
+      <defs><marker id="are" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#a78bfa"/></marker></defs>
+      <rect x="30" y="130" width="150" height="66" rx="10" fill="#0f2b29" stroke="#2dd4bf"/>
+      <text x="105" y="158" text-anchor="middle" font-family="Inter" font-size="13" fill="#2dd4bf" font-weight="700">Production traces</text>
+      <text x="105" y="177" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">real user traffic</text>
+
+      <rect x="230" y="130" width="150" height="66" rx="10" fill="#17212e" stroke="#38bdf8"/>
+      <text x="305" y="158" text-anchor="middle" font-family="Inter" font-size="13" fill="#38bdf8" font-weight="700">Dataset</text>
+      <text x="305" y="177" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">sampled test cases</text>
+      <path d="M180 163 L226 163" stroke="#a78bfa" stroke-width="2" marker-end="url(#are)"/>
+      <text x="183" y="153" font-family="JetBrains Mono" font-size="9.5" fill="#6b8299">sample</text>
+
+      <!-- evaluator stack -->
+      <rect x="430" y="96" width="190" height="134" rx="10" fill="#1d1733" stroke="#a78bfa"/>
+      <text x="525" y="120" text-anchor="middle" font-family="Inter" font-size="13" fill="#a78bfa" font-weight="750">Evaluator (eval workers)</text>
+      <text x="446" y="146" font-family="JetBrains Mono" font-size="11" fill="#cbd9e5">▸ Code check — JSON valid?</text>
+      <text x="446" y="168" font-family="JetBrains Mono" font-size="11" fill="#cbd9e5">▸ LLM-as-judge — score 1–5</text>
+      <text x="446" y="190" font-family="JetBrains Mono" font-size="11" fill="#cbd9e5">▸ Behavior model (Span-01)</text>
+      <text x="446" y="212" font-family="JetBrains Mono" font-size="10" fill="#6b8299">plain-English behavior → P(present)</text>
+      <path d="M380 163 L426 163" stroke="#a78bfa" stroke-width="2" marker-end="url(#are)"/>
+
+      <!-- scores -->
+      <rect x="690" y="96" width="180" height="66" rx="10" fill="#1b1406" stroke="#f5b945"/>
+      <text x="780" y="124" text-anchor="middle" font-family="Inter" font-size="13" fill="#f5b945" font-weight="700">Scores</text>
+      <text x="780" y="143" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">pass rate · avg · reasoning</text>
+      <path d="M620 140 L686 130" stroke="#a78bfa" stroke-width="2" marker-end="url(#are)"/>
+
+      <!-- link back -->
+      <rect x="690" y="188" width="180" height="42" rx="10" fill="#101c22" stroke="#2dd4bf"/>
+      <text x="780" y="214" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#2dd4bf">each score ↔ its span</text>
+      <path d="M620 190 L686 206" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#are)"/>
+
+      <!-- feedback loop -->
+      <path d="M780 230 C780 290, 105 300, 105 200" fill="none" stroke="#6b8299" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#are)"/>
+      <text x="360" y="300" font-family="Inter" font-size="12" fill="#9bb0c3">change prompt → re-run → did the score go up? → ship</text>
+    </svg>
+    <figcaption>Fig. 5 — The eval loop closes on itself: measure, change, re-measure, ship. This is what turns "vibes" into engineering.</figcaption>
+  </figure>
+  <div class="grid three">
+    <div class="card"><h4>Code check</h4><p>Deterministic &amp; free: valid JSON, length limits, required substrings, regex. Instant, exact — use wherever possible.</p></div>
+    <div class="card"><h4>LLM-as-judge</h4><p>Another LLM grades against a rubric and explains itself. For fuzzy quality (helpfulness, correctness) that code can't check.</p></div>
+    <div class="card"><h4>Behavior model</h4><p>Describe a behavior in plain English ("hallucinated a fact", "refused unsafe request") → probability it's present. Scales to many behaviors cheaply.</p></div>
+  </div>
+</section>
+
+<!-- ALERTS -->
+<section id="alerts">
+  <h2><span class="n">09</span>Monitors &amp; alerting</h2>
+  <p class="sub">Be paged before your users complain</p>
+  <p>A dedicated consumer group reads the same span stream and evaluates rules continuously: <em>"error rate &gt; 5% in 5 min"</em>, <em>"today's spend &gt; $500"</em>, <em>"p95 latency &gt; 8s"</em>. A matching rule fires through a dispatcher to Slack, email, PagerDuty, or a webhook. Because it reads from Kafka — the same buffer as storage — alerting keeps working even if the analytics DB is lagging, and adds no load to the query path.</p>
+  <div class="callout violet">
+    <p class="t">Why a separate consumer, not a cron over ClickHouse?</p>
+    <p>Polling the analytics DB for alerts competes with user dashboards and adds latency to detection. Streaming evaluation off Kafka is real-time and isolated — a recurring theme: <strong>separate workloads get separate compute.</strong></p>
+  </div>
+</section>
+
+<!-- GATEWAY -->
+<section id="gateway">
+  <h2><span class="n">10</span>The AI Gateway (the fourth pillar)</h2>
+  <p class="sub">Optional, but it makes observability effortless</p>
+  <p>Respan also offers a <strong>gateway</strong>: one API endpoint that proxies to hundreds of models (OpenAI, Anthropic, …) with automatic <strong>fallbacks</strong> (primary down → retry on a backup), <strong>load balancing</strong>, <strong>response caching</strong>, and per-key spend limits. Because every call flows <em>through</em> the gateway, it produces spans into the same pipeline for free — no SDK needed.</p>
+  <figure>
+    <svg viewBox="0 0 860 170" role="img" aria-label="The AI Gateway sits between the customer app and multiple model providers, adding caching, fallback and load balancing, and emitting spans into the same ingestion pipeline.">
+      <defs><marker id="arg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2dd4bf"/></marker></defs>
+      <rect x="20" y="58" width="150" height="54" rx="10" fill="#17212e" stroke="#2d3f52"/>
+      <text x="95" y="90" text-anchor="middle" font-family="Inter" font-size="13" fill="#e6edf3" font-weight="700">Customer app</text>
+      <rect x="250" y="44" width="200" height="82" rx="10" fill="#0f2b29" stroke="#2dd4bf"/>
+      <text x="350" y="72" text-anchor="middle" font-family="Inter" font-size="13.5" fill="#2dd4bf" font-weight="750">AI Gateway</text>
+      <text x="350" y="92" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9bb0c3">cache · fallback · balance</text>
+      <text x="350" y="108" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b8299">emits spans automatically</text>
+      <path d="M170 85 L246 85" stroke="#2dd4bf" stroke-width="2" marker-end="url(#arg)"/>
+      <rect x="540" y="20" width="150" height="40" rx="9" fill="#17212e" stroke="#38bdf8"/>
+      <text x="615" y="45" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#38bdf8">OpenAI</text>
+      <rect x="540" y="70" width="150" height="40" rx="9" fill="#17212e" stroke="#a78bfa"/>
+      <text x="615" y="95" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#a78bfa">Anthropic</text>
+      <rect x="540" y="120" width="150" height="40" rx="9" fill="#17212e" stroke="#f5b945"/>
+      <text x="615" y="145" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#f5b945">+ 100s more</text>
+      <path d="M450 72 L536 44" stroke="#2dd4bf" stroke-width="1.6" marker-end="url(#arg)"/>
+      <path d="M450 85 L536 90" stroke="#2dd4bf" stroke-width="1.6" marker-end="url(#arg)"/>
+      <path d="M450 98 L536 134" stroke="#2dd4bf" stroke-width="1.6" marker-end="url(#arg)"/>
+      <path d="M350 126 C350 160, 760 160, 760 20" fill="none" stroke="#6b8299" stroke-width="1.4" stroke-dasharray="4 4"/>
+      <text x="700" y="150" font-family="JetBrains Mono" font-size="9.5" fill="#6b8299">spans → ingest</text>
+    </svg>
+    <figcaption>Fig. 6 — The gateway doubles as a zero-integration source of traces.</figcaption>
+  </figure>
+</section>
+
+<!-- K8S -->
+<section id="k8s">
+  <h2><span class="n">11</span>Kubernetes &amp; the platform layer</h2>
+  <p class="sub">What actually keeps all of the above alive, scaled, and shippable</p>
+  <p>Every stateless tier — ingest, consumers, eval workers, query API, web, gateway — runs as containers orchestrated by <strong>Kubernetes</strong>. The stateful stores (ClickHouse, Postgres, Kafka) usually run as managed services or dedicated operators, not naked pods.</p>
+  <div class="grid two">
+    <div class="card">
+      <h4>Why Kubernetes here</h4>
+      <ul class="hww">
+        <li><b>Scale</b> HPA auto-scales ingest &amp; eval pods on CPU / queue-lag — handle a 10× spike, then scale back down to save money.</li>
+        <li class="why"><b>Heal</b> A crashed pod is restarted and rescheduled automatically; rolling deploys ship with zero downtime.</li>
+        <li class="solves"><b>Spread</b> Multi-AZ scheduling survives a datacenter zone failure. One control plane, declarative config.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>The rest of the platform</h4>
+      <ul class="hww">
+        <li><b>IaC</b> Terraform provisions cloud + cluster; Helm/Argo deploys services — reproducible, reviewable infra.</li>
+        <li class="why"><b>CI/CD</b> Build image → test → push to registry → progressive rollout, on every merge.</li>
+        <li class="solves"><b>Meta</b> Prometheus + Grafana + traces watch the <em>platform itself</em> — you must observe your own observability tool.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout amber">
+    <p class="t">⚑ Honest engineering note</p>
+    <p>Kubernetes earns its keep <em>because</em> this system has many independently-scaling stateless services and real multi-tenant scale. K8s is about <strong>running the system reliably</strong>, not about the product's features — the trace/eval logic is identical whether it runs on one laptop or a 200-node cluster. Build the logic first; let the platform scale it.</p>
+  </div>
+</section>
+
+<!-- LIFECYCLE -->
+<section id="lifecycle">
+  <h2><span class="n">12</span>One request, end to end</h2>
+  <p class="sub">Tying every box together in a single story</p>
+  <ol class="lifeflow">
+    <li>A user asks the customer's agent a question. The agent makes several LLM + tool calls.</li>
+    <li>The <strong>SDK</strong> captures each as a span, batches them, and fires them async at the <strong>ingress</strong> — the agent answers the user without waiting.</li>
+    <li><strong>Ingest pods</strong> authenticate, validate, compute cost, push any huge payload to <strong>S3</strong>, and <strong>produce</strong> the spans to <strong>Kafka</strong>.</li>
+    <li><strong>Storage consumers</strong> batch them and insert into <strong>ClickHouse</strong>; a sampler forks some onto the <strong>eval</strong> stream; the <strong>alert engine</strong> checks rules live.</li>
+    <li>An engineer opens the dashboard; the <strong>query API</strong> serves it from <strong>Redis</strong> cache, falling back to <strong>ClickHouse</strong> + <strong>Postgres</strong>.</li>
+    <li>They spot a bad answer, click into the <strong>trace</strong> (full payload lazy-loaded from S3), build a <strong>dataset</strong>, and run an <strong>evaluator</strong> on the eval workers.</li>
+    <li>Scores come back linked to each span. They fix the prompt, re-run, watch the score climb, and ship — with a <strong>monitor</strong> now guarding the metric in production.</li>
+  </ol>
+</section>
+
+<!-- STACK -->
+<section id="stack">
+  <h2><span class="n">13</span>Reference stack</h2>
+  <p class="sub">A concrete, production-credible set of choices</p>
+  <table>
+    <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Client SDK</td><td><code>TypeScript / Python</code>, OTLP</td><td>Meet customers in their language; OpenTelemetry is the industry standard</td></tr>
+      <tr><td>Ingest / services</td><td><code>Go</code> or <code>TypeScript (Bun)</code></td><td>Cheap concurrency for high-throughput stateless intake</td></tr>
+      <tr><td>Message queue</td><td><code>Kafka</code> (or Redpanda)</td><td>Durable, partitioned, replayable, fan-out</td></tr>
+      <tr><td>Analytics store</td><td><code>ClickHouse</code></td><td>Columnar — billions of spans, fast aggregates, high compression</td></tr>
+      <tr><td>Metadata store</td><td><code>Postgres</code></td><td>ACID, relational config / auth / prompt versions</td></tr>
+      <tr><td>Blob store</td><td><code>S3</code> / compatible</td><td>Cheap, infinite storage for fat payloads</td></tr>
+      <tr><td>Cache / limits</td><td><code>Redis</code></td><td>Hot query cache, rate limiting, dedup</td></tr>
+      <tr><td>Eval workers</td><td>queue-driven pool</td><td>Isolate slow, bursty LLM-judge work</td></tr>
+      <tr><td>Frontend</td><td><code>React</code> + charts</td><td>Dashboards, logs, trace viewer, eval UI</td></tr>
+      <tr><td>Orchestration</td><td><code>Kubernetes</code> + HPA</td><td>Autoscale, self-heal, zero-downtime deploys, multi-AZ</td></tr>
+      <tr><td>Infra / delivery</td><td><code>Terraform</code>, Helm/Argo, CI/CD</td><td>Reproducible infra, progressive rollouts</td></tr>
+      <tr><td>Platform observability</td><td><code>Prometheus</code> + <code>Grafana</code></td><td>Watch the watcher — SLOs on your own system</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p class="mini">Respan — production architecture explainer · built as a study + build reference</p>
+    <p>Core idea: <strong>capture every AI step as a nested trace, stream it through a durable buffer into a columnar store, then observe and score it.</strong></p>
+  </div>
+</footer>
+
+</body>
+</html>
